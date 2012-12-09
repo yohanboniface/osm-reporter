@@ -3,7 +3,9 @@ import urllib2
 import os
 import time
 import optparse
-from flask import Flask, url_for, render_template, abort, Response
+import hashlib
+
+from flask import Flask, request, render_template, abort, Response
 from xml.dom.minidom import parse
 import sqlite3 as sqlite
 
@@ -18,14 +20,27 @@ LOGGER = logging.getLogger('osm-reporter')
 CREW_LIST = ['Jacoline', 'NicoKriek', 'Babsie']
 app = Flask(__name__)
 
+
 @app.route('/')
 def current_status():
+    bbox = request.args.get('bbox', '20.411482,-34.053726,20.467358,-34.009483')
     myUrlPath = ('http://www.openstreetmap.org/api/0.6/'
-                 'map?bbox=20.411482,-34.053726,20.467358,-34.009483')
-    myFilePath = '/tmp/swellendam.osm'
-    myDom = load_osm_dom(myFilePath, myUrlPath)
-    mySortedUserList = osm_building_contributions(myDom)
-    return render_template('base.html', mySortedUserList=mySortedUserList)
+                 'map?bbox=%s' % bbox)
+    safe_name = hashlib.md5(bbox).hexdigest()
+    myFilePath = os.path.join(
+        '/tmp',
+        'reporter',
+        safe_name
+    )
+    try:
+        myDom = load_osm_dom(myFilePath, myUrlPath)
+    except urllib2.URLError:
+        mySortedUserList = []
+        error = "Bad request. Maybe the bbox is too big!"
+    else:
+        mySortedUserList = osm_building_contributions(myDom)
+        error = None
+    return render_template('base.html', mySortedUserList=mySortedUserList, bbox=bbox, error=error)
 
 
 def load_osm_dom(theFilePath, theUrlPath):
